@@ -1,6 +1,6 @@
 "use client";
-import { db } from "@/configs/db";
-import { Users } from "@/configs/schema";
+import { db } from "../configs/db.js";
+import { Users } from "../configs/schema.js";
 import { useUser } from "@clerk/nextjs";
 import { eq } from "drizzle-orm";
 import React, { useEffect } from "react";
