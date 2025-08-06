@@ -23,7 +23,7 @@ function SelectDuration({ onUserSelect }) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="30 Seconds">30 Seconds</SelectItem>
-          <SelectItem value="30 Seconds">60 Seconds</SelectItem>
+          <SelectItem value="60 Seconds">60 Seconds</SelectItem>
         </SelectContent>
       </Select>
     </div>
