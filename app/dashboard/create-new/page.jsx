@@ -13,6 +13,7 @@ function CreateNew() {
   const [videoScript, setVideoScript] = useState();
   const [fileUrl, setFileUrl] = useState("");
   const [captions, setCaptions] = useState();
+  const [imageList, setImageList] = useState([]);
 
   const onHandleInputChange = (fieldName, fieldValue) => {
     console.log(fieldName, fieldValue);
@@ -37,6 +38,11 @@ function CreateNew() {
       console.log("Step 3: Generating captions...");
       await GenerateAudioCaption(audioUrl);
 
+      // Step 4: Generate Images - Pass scriptData directly
+      console.log("Step 4: Generating images...");
+      await GenerateImage(scriptData); // Pass the script data and await
+
+      // Step 5: Create Video
       console.log("All operations completed successfully!");
     } catch (error) {
       console.error("Error in video creation process:", error);
@@ -126,6 +132,32 @@ function CreateNew() {
     }
   };
 
+  const GenerateImage = async (scriptData) => {
+    // Use scriptData parameter or fallback to videoScript state
+    const dataToUse = scriptData || videoScript;
+
+    if (!dataToUse || !Array.isArray(dataToUse)) {
+      console.error("No valid script data available for image generation");
+      return;
+    }
+
+    try {
+      const imagePromises = dataToUse.map((item) =>
+        axios
+          .post("/api/generate-image", {
+            prompt: item?.imagePrompt,
+          })
+          .then((resp) => resp.data.result)
+      );
+
+      const images = await Promise.all(imagePromises);
+      console.log("Generated images:", images);
+      setImageList(images);
+    } catch (error) {
+      console.error("Error generating images:", error);
+      throw error;
+    }
+  };
   return (
     <div className="md:px-20">
       <h2 className="font-bold text-4xl text-primary text-center">

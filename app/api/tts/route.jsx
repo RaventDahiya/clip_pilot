@@ -2,23 +2,16 @@ import { NextResponse } from "next/server";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { createClient } from "@supabase/supabase-js";
 
-// Basic validation for environment variables
 if (
   !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   !process.env.SUPABASE_SERVICE_KEY
 ) {
   throw new Error("Supabase environment variables are not set.");
 }
-
 if (!process.env.ELEVENLABS_API_KEY) {
   throw new Error("ELEVENLABS_API_KEY environment variable is not set.");
 }
 
-if (!process.env.ELEVENLABS_VOICE_ID) {
-  console.warn("ELEVENLABS_VOICE_ID is not set, using default voice.");
-}
-
-// Initialize Supabase client (server-side, use service role key)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
@@ -30,68 +23,69 @@ const client = new ElevenLabsClient({
 
 export async function POST(req) {
   try {
-    console.log("TTS API called");
     const { text } = await req.json();
-    console.log("Text received:", text?.substring(0, 100) + "...");
-
     if (!text || !text.trim()) {
       return NextResponse.json(
-        { error: "Empty text is not allowed" },
+        { error: "Empty text not allowed" },
         { status: 400 }
       );
     }
 
-    console.log("Calling ElevenLabs API...");
     // Generate audio stream
-    const audioStream = await client.textToSpeech.convert(
-      process.env.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
-      {
-        outputFormat: "mp3_44100_128",
-        text,
-        modelId: "eleven_multilingual_v2",
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb";
+    const audioStream = await client.textToSpeech.convert(voiceId, {
+      outputFormat: "mp3_44100_128",
+      text,
+      modelId: "eleven_multilingual_v2",
+    });
+
+    // Collect chunks
+    let audioBuffer;
+    try {
+      const chunks = [];
+      for await (const chunk of audioStream) {
+        chunks.push(chunk);
       }
-    );
-
-    console.log("Audio stream received, collecting chunks...");
-    // Collect chunks into a buffer
-    const chunks = [];
-    for await (const chunk of audioStream) {
-      chunks.push(chunk);
+      audioBuffer = Buffer.concat(chunks);
+      console.log("Audio buffer size:", audioBuffer.length);
+    } catch (streamError) {
+      console.error("Stream error:", streamError);
+      return NextResponse.json(
+        { error: "Streaming failed", details: streamError.message },
+        { status: 500 }
+      );
     }
-    const audioBuffer = Buffer.concat(chunks);
-    console.log("Audio buffer size:", audioBuffer.length);
 
-    // Create a unique filename
+    // Upload to Supabase
     const fileName = `speech_${Date.now()}.mp3`;
-
-    console.log("Uploading to Supabase...");
-    // Upload buffer to Supabase Storage bucket "audio-files"
-    const { data, error } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("audio-files")
       .upload(fileName, audioBuffer, {
         contentType: "audio/mpeg",
         upsert: true,
       });
-
-    if (error) {
-      console.error("Supabase upload error:", error);
+    if (uploadError) {
+      console.error("Supabase upload error:", uploadError);
       return NextResponse.json(
-        { error: "Failed to upload file to Supabase", details: error.message },
+        { error: "Upload failed", details: uploadError.message },
         { status: 500 }
       );
     }
 
-    console.log("Upload successful, getting public URL...");
-    // Get a public URL for the uploaded file
-    const { data: urlData } = supabase.storage
-      .from("audio-files")
-      .getPublicUrl(fileName);
+    // Get public URL
+    const {
+      data: { publicUrl },
+      error: publicUrlError,
+    } = supabase.storage.from("audio-files").getPublicUrl(fileName);
+    if (publicUrlError) {
+      console.error("Supabase getPublicUrl error:", publicUrlError);
+      return NextResponse.json(
+        { error: "Failed to get public URL", details: publicUrlError.message },
+        { status: 500 }
+      );
+    }
 
-    console.log("Success! Public URL:", urlData.publicUrl);
-    return NextResponse.json({
-      message: "File uploaded successfully",
-      url: urlData.publicUrl,
-    });
+    return NextResponse.json({ message: "Success", url: publicUrl });
   } catch (error) {
     console.error("TTS or upload error:", error);
     return NextResponse.json(
